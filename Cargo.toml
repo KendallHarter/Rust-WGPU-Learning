@@ -1,0 +1,17 @@
+[package]
+name = "rust_test"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+embed_files = []
+
+[dependencies]
+winit = "*"
+wgpu = "*"
+env_logger = "*"
+pollster = "*"
+image = { version = "*", default-features = false, features = ["png"] }
+rust-embed = "*"
