@@ -64,11 +64,11 @@ fn vs_main(
 }
 
 @group(0) @binding(0)
-var t_diffuse: texture_2d<f32>;
+var tile_texture: texture_2d<f32>;
 @group(0) @binding(1)
-var s_diffuse: sampler;
+var tile_sampler: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-   return textureSample(t_diffuse, s_diffuse, in.tex_loc);
+   return textureSample(tile_texture, tile_sampler, in.tex_loc);
 }

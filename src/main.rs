@@ -9,6 +9,7 @@ struct State<'window> {
    tiles_buffer: wgpu::Buffer,
    tiles_bind_group: wgpu::BindGroup,
    tiles: [[u32; 4]; 1024],
+   frame_times: Vec<f64>,
 }
 
 const NUM_TILES: u32 = 1024;
@@ -19,7 +20,7 @@ use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]
 #[folder = "src"]
-struct Asset;
+struct ScriptAssets;
 
 impl<'window> State<'window> {
    async fn new(window: &'window winit::window::Window) -> Self {
@@ -76,7 +77,7 @@ impl<'window> State<'window> {
       let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
          label: Some("Shader"),
          source: wgpu::ShaderSource::Wgsl(
-            String::from_utf8_lossy(&Asset::get("shader.wgsl").unwrap().data.into_owned()).into(),
+            String::from_utf8_lossy(&ScriptAssets::get("shader.wgsl").unwrap().data.into_owned()).into(),
          ),
       });
 
@@ -257,6 +258,7 @@ impl<'window> State<'window> {
          tiles_buffer,
          tiles_bind_group,
          tiles: [[0; 4]; 1024],
+         frame_times: vec![],
       }
    }
 
@@ -269,12 +271,34 @@ impl<'window> State<'window> {
       }
    }
 
-   fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+   fn render(&mut self, frametime: f64) -> Result<(), wgpu::SurfaceError> {
+      if self.frame_times.len() == 100 {
+         self.frame_times.rotate_left(1);
+         self.frame_times[99] = frametime;
+      } else {
+         self.frame_times.push(frametime);
+      }
+
       let output = self.surface.get_current_texture()?;
       let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
       let mut encoder = self
          .device
          .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render") });
+
+      // Clear out any potential old text
+      for i in self.tiles.as_mut_slice() {
+         i[0] = 0;
+      }
+
+      let avg_frame_time = self.frame_times.iter().sum::<f64>() / self.frame_times.len() as f64;
+      let avg_frame_rate = format!("{}", 1.0 / avg_frame_time);
+      for (i, c) in avg_frame_rate.as_bytes().iter().enumerate() {
+         self.tiles[i][0] = *c as u32;
+      }
+
+      self.queue.write_buffer(&self.tiles_buffer, 0, &unsafe {
+         std::mem::transmute::<[[u32; 4]; 1024], [u8; 1024 * 4 * 4]>(self.tiles)
+      });
 
       let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
          label: Some("Render"),
@@ -325,14 +349,7 @@ pub fn run() {
    let mut state = pollster::block_on(State::new(&window));
 
    let mut frame_start_time = std::time::Instant::now();
-
-   for (i, c) in "blahblahblah".as_bytes().into_iter().enumerate() {
-      state.tiles[i][0] = *c as u32;
-   }
-
-   state.queue.write_buffer(&state.tiles_buffer, 0, &unsafe {
-      std::mem::transmute::<[[u32; 4]; 1024], [u8; 1024 * 4 * 4]>(state.tiles)
-   });
+   let mut frame_time = 1.0;
 
    event_loop
       .run(|event, elwt| {
@@ -340,7 +357,7 @@ pub fn run() {
          match event {
             Event::WindowEvent { window_id, ref event } if window_id == window.id() => match event {
                WindowEvent::CloseRequested => elwt.exit(),
-               WindowEvent::RedrawRequested => match state.render() {
+               WindowEvent::RedrawRequested => match state.render(frame_time) {
                   Ok(_) => {}
                   Err(wgpu::SurfaceError::Lost) => {
                      state.resize(state.size);
@@ -357,15 +374,12 @@ pub fn run() {
             },
             Event::AboutToWait => {
                if frame_start_time.elapsed() >= std::time::Duration::from_secs_f64(1.0 / 59.7275) {
-                  println!(
-                     "{}/{}",
-                     frame_start_time.elapsed().as_micros(),
-                     std::time::Duration::from_secs_f64(1.0 / 59.7275).as_micros()
-                  );
+                  frame_time = frame_start_time.elapsed().as_secs_f64();
                   frame_start_time = std::time::Instant::now();
                   window.request_redraw();
                } else {
-                  std::thread::sleep(std::time::Duration::from_micros(1));
+                  let time_to_sleep_to = frame_start_time + std::time::Duration::from_secs_f64(1.0 / 59.7275);
+                  spin_sleep::sleep(time_to_sleep_to - std::time::Instant::now());
                }
             }
             _ => {}

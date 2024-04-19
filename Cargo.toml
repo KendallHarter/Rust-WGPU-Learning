@@ -1,5 +1,5 @@
 [package]
-name = "rust_test"
+name = "rust_wgsl_learning"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,3 +15,4 @@ env_logger = "*"
 pollster = "*"
 image = { version = "*", default-features = false, features = ["png"] }
 rust-embed = "*"
+spin_sleep = "*"
